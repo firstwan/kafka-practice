@@ -1,0 +1,63 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using Confluent.Kafka
+@inject IConfiguration Configuration
+
+<PageTitle>Producer</PageTitle>
+
+<h3>Producer</h3>
+
+<div class="text-center flex-fill d-flex justify-content-center align-items-center">
+    <div>
+        <label for="message">Enter Text:</label>
+        <input type="text" id="message" name="message" @bind="newMessage" />
+    </div>
+    <div>
+        <button @onclick="ProduceMessage">Submit</button>
+    </div>
+</div>
+
+@code {
+    private string? newMessage;
+    private IConfiguration configuration;
+
+    protected override void OnInitialized()
+    {
+        configuration = Configuration.GetSection("Kafka");
+    }
+
+    private void ProduceMessage()
+    {
+        string topic = configuration["Topic"]!;
+
+        ProducerConfig config = new()
+            {
+                BootstrapServers = configuration["BootstrapServers"],
+                SecurityProtocol = SecurityProtocol.SaslSsl,
+                SaslMechanism = SaslMechanism.Plain,
+                SaslUsername = configuration["ApiKey"],
+                SaslPassword = configuration["ApiSecret"],
+            };
+
+        // creates a new Kafka producer instance
+        using (var producer = new ProducerBuilder<Null, string>(config).Build())
+        {
+            // produces the message to kafka
+            producer.Produce(topic, new Message<Null, string> { Value = newMessage! },
+              (deliveryReport) =>
+              {
+                  if (deliveryReport.Error.Code != ErrorCode.NoError)
+                  {
+                      Console.WriteLine($"Failed to deliver message: {deliveryReport.Error.Reason}");
+                  }
+                  else
+                  {
+                      Console.WriteLine($"Produced event to topic {topic}: key = {deliveryReport.Message.Key,-10} value = {deliveryReport.Message.Value}");
+                  }
+              });
+            producer.Flush(TimeSpan.FromSeconds(10));
+        }
+
+        newMessage = null;
+    }
+}
